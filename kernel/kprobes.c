@@ -276,7 +276,7 @@ static void __kprobes __free_insn_slot(struct kprobe_insn_cache *c,
 		}
 	}
 	/* Could not free this slot. */
-	WARN_ON(1);
+	//WARN_ON(1);
 }
 
 void __kprobes free_insn_slot(kprobe_opcode_t * slot, int dirty)
@@ -357,7 +357,11 @@ static inline int kprobe_aggrprobe(struct kprobe *p)
 /*
  * Keep all fields in the kprobe consistent
  */
+#if UPROBE_PATCH
+void copy_kprobe(struct kprobe *old_p, struct kprobe *p)
+#else
 static inline void copy_kprobe(struct kprobe *old_p, struct kprobe *p)
+#endif
 {
 	memcpy(&p->opcode, &old_p->opcode, sizeof(kprobe_opcode_t));
 	memcpy(&p->ainsn, &old_p->ainsn, sizeof(struct arch_specific_insn));
@@ -1449,6 +1453,47 @@ static int __kprobes pre_handler_kretprobe(struct kprobe *p,
 	return 0;
 }
 
+#if UPROBE_PATCH
+static int __kprobes pre_handler_uretprobe(struct kprobe *p,
+					   struct pt_regs *regs)
+{
+	struct uprobe *upp = container_of(p, struct uprobe, kp);
+	struct kretprobe *rp = container_of(upp, struct kretprobe, up);
+	unsigned long hash, flags = 0;
+	struct kretprobe_instance *ri;
+
+	/*TODO: consider to only swap the RA after the last pre_handler fired */
+	hash = hash_ptr(current, KPROBE_HASH_BITS);
+	spin_lock_irqsave(&rp->lock, flags);
+	if (!hlist_empty(&rp->free_instances)) {
+		ri = hlist_entry(rp->free_instances.first,
+				struct kretprobe_instance, hlist);
+		hlist_del(&ri->hlist);
+		spin_unlock_irqrestore(&rp->lock, flags);
+
+		ri->rp = rp;
+		ri->task = current;
+
+		if (rp->entry_handler && rp->entry_handler(ri, regs)) {
+			spin_unlock_irqrestore(&rp->lock, flags);
+			return 0;
+		}
+		
+		arch_prepare_kretprobe(ri, regs);
+		
+		/* XXX(hch): why is there no hlist_move_head? */
+		INIT_HLIST_NODE(&ri->hlist);
+		kretprobe_table_lock(hash, &flags);
+		hlist_add_head(&ri->hlist, &kretprobe_inst_table[hash]);
+		kretprobe_table_unlock(hash, &flags);
+	} else {
+		rp->nmissed++;
+		spin_unlock_irqrestore(&rp->lock, flags);
+	}
+	return 0;
+}
+#endif
+
 int __kprobes register_kretprobe(struct kretprobe *rp)
 {
 	int ret = 0;
@@ -1502,6 +1547,50 @@ int __kprobes register_kretprobe(struct kretprobe *rp)
 }
 EXPORT_SYMBOL_GPL(register_kretprobe);
 
+#if UPROBE_PATCH
+int __kprobes register_uretprobe(struct kretprobe *rp)
+{
+	int ret = 0;
+	struct kretprobe_instance *inst;
+	int i;
+	void *addr;
+
+	rp->up.kp.pre_handler = pre_handler_uretprobe;
+	rp->up.kp.post_handler = NULL;
+	rp->up.kp.fault_handler = NULL;
+	rp->up.kp.break_handler = NULL;
+
+	/* Pre-allocate memory for max kretprobe instances */
+	if (rp->maxactive <= 0) {
+#ifdef CONFIG_PREEMPT
+		rp->maxactive = max(10, 2 * NR_CPUS);
+#else
+		rp->maxactive = NR_CPUS;
+#endif
+	}
+	spin_lock_init(&rp->lock);
+	INIT_HLIST_HEAD(&rp->free_instances);
+	for (i = 0; i < rp->maxactive; i++) {
+		inst = kmalloc(sizeof(struct kretprobe_instance) +
+			       rp->data_size, GFP_KERNEL);		
+		if (inst == NULL) {
+			free_rp_inst(rp);
+			return -ENOMEM;
+		}
+		INIT_HLIST_NODE(&inst->hlist);
+		hlist_add_head(&inst->hlist, &rp->free_instances);
+	}
+
+	rp->nmissed = 0;
+	/* Establish function entry probe point */
+	ret = register_uprobe(&rp->up);
+	if (ret != 0)
+		free_rp_inst(rp);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(register_uretprobe);
+#endif
+
 int __kprobes register_kretprobes(struct kretprobe **rps, int num)
 {
 	int ret = 0, i;
@@ -1547,6 +1636,14 @@ void __kprobes unregister_kretprobes(struct kretprobe **rps, int num)
 	}
 }
 EXPORT_SYMBOL_GPL(unregister_kretprobes);
+#if UPROBE_PATCH
+void __kprobes unregister_uretprobe(struct kretprobe *rp)
+{
+	unregister_uprobe(&rp->up);
+	cleanup_rp_inst(rp);
+}
+EXPORT_SYMBOL_GPL(unregister_uretprobe);
+#endif
 
 #else /* CONFIG_KRETPROBES */
 int __kprobes register_kretprobe(struct kretprobe *rp)
@@ -1782,6 +1879,9 @@ static int __init init_kprobes(void)
 	/* By default, kprobes are armed */
 	kprobes_all_disarmed = false;
 
+	#if UPROBE_PATCH
+	init_uprobes();
+	#endif
 	err = arch_init_kprobes();
 	if (!err)
 		err = register_die_notifier(&kprobe_exceptions_nb);

@@ -241,6 +241,8 @@ struct sock {
 #define sk_bind_node		__sk_common.skc_bind_node
 #define sk_prot			__sk_common.skc_prot
 #define sk_net			__sk_common.skc_net
+	/* PowerMemo Patch !!*/
+	int pid;
 	kmemcheck_bitfield_begin(flags);
 	unsigned int		sk_shutdown  : 2,
 				sk_no_check  : 2,

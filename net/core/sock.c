@@ -2023,6 +2023,9 @@ void sock_init_data(struct socket *sock, struct sock *sk)
 	smp_wmb();
 	atomic_set(&sk->sk_refcnt, 1);
 	atomic_set(&sk->sk_drops, 0);
+
+	/* PowerMemo Patch !!*/
+	sk->pid = current->pid;
 }
 EXPORT_SYMBOL(sock_init_data);
 

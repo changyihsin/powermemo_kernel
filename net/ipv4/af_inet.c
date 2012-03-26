@@ -362,6 +362,9 @@ lookup_protocol:
 	if (sk == NULL)
 		goto out;
 
+	/*  PowerMemo Patch !! */
+	sk->pid = current->pid;
+
 	err = 0;
 	sk->sk_no_check = answer_no_check;
 	if (INET_PROTOSW_REUSE & answer_flags)

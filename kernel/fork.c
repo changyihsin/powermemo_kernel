@@ -1076,7 +1076,9 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 	spin_lock_init(&p->alloc_lock);
 
 	init_sigpending(&p->pending);
-
+	#if UPROBE_PATCH
+	p->trampoline_addr = 0;
+	#endif
 	p->utime = cputime_zero;
 	p->stime = cputime_zero;
 	p->gtime = cputime_zero;

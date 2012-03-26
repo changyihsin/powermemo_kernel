@@ -107,6 +107,10 @@
 #include <net/xfrm.h>
 #include "udp_impl.h"
 
+/* PowerMemo Patch !!*/
+#include <linux/powermemo.h>
+extern int my_rxbitrate;
+
 struct udp_table udp_table __read_mostly;
 EXPORT_SYMBOL(udp_table);
 
@@ -1605,6 +1609,16 @@ int __udp4_lib_rcv(struct sk_buff *skb, struct udp_table *udptable,
 	sk = __udp4_lib_lookup_skb(skb, uh->source, uh->dest, udptable);
 
 	if (sk != NULL) {
+
+		/* PowerMemo Patch !! */
+		if(powermemo_avail == 1 && 
+				skb != NULL && 
+				skb->dev->name[0] == 'w'){ /* name ?= wlanX */
+
+			powermemofuncs.rcv_entry(sk->pid, my_rxbitrate, skb->len); //change it ilter
+			/* printk("udp_rcv: skb->sk->pid = %d,skb->len = %d\n",skb->sk->pid,skb->len); */
+		}
+
 		int ret = udp_queue_rcv_skb(sk, skb);
 		sock_put(sk);
 

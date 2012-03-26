@@ -28,6 +28,10 @@
 #include "tkip.h"
 #include "wme.h"
 
+/* PowerMemo Patch !! */
+int my_rxbitrate = 0;
+EXPORT_SYMBOL(my_rxbitrate);
+
 /*
  * monitor mode reception
  *
@@ -2871,6 +2875,9 @@ void ieee80211_rx(struct ieee80211_hw *hw, struct sk_buff *skb)
 	 * receive processing
 	 */
 	rcu_read_lock();
+
+	/* PowerMemo Patch !!*/
+	my_rxbitrate = rate->bitrate;
 
 	/*
 	 * Frames with failed FCS/PLCP checksum are not returned,

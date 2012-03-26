@@ -28,6 +28,11 @@
 #include <net/pkt_sched.h>
 #include <net/dst.h>
 
+/* PowerMemo Patch !! */
+#include <linux/powermemo.h>
+#include <net/sock.h>
+extern int my_txbitrate;
+
 /* Main transmission queue. */
 
 /* Modifications to data participating in scheduling must be protected with
@@ -122,8 +127,19 @@ int sch_direct_xmit(struct sk_buff *skb, struct Qdisc *q,
 	spin_unlock(root_lock);
 
 	HARD_TX_LOCK(dev, txq, smp_processor_id());
-	if (!netif_tx_queue_stopped(txq) && !netif_tx_queue_frozen(txq))
+	if (!netif_tx_queue_stopped(txq) && !netif_tx_queue_frozen(txq)) {
+
+		/* PowerMemo Patch !! */
+		if(powermemo_avail == 1 &&  
+				skb != NULL && 
+				skb->sk != NULL &&
+				skb->dev->name[0] == 'w' ){
+
+			powermemofuncs.xmit_entry(skb->sk->pid, my_txbitrate, skb->len);
+		}
+
 		ret = dev_hard_start_xmit(skb, dev, txq);
+	}
 
 	HARD_TX_UNLOCK(dev, txq);
 

@@ -76,6 +76,31 @@ static void gpio_led_set(struct led_classdev *led_cdev,
 			gpio_set_value(led_dat->gpio, level);
 	}
 }
+void POWER_TRIGGER_DAQ(int turnon)
+{
+	if (turnon)
+		gpio_set_value(149, 1);
+	else
+		gpio_set_value(149, 0);
+}
+
+void benchmark_leds(int turnon)
+{
+	if (turnon)
+	{
+		gpio_set_value(149, 1);
+		gpio_set_value(150, 1);
+	}
+	else
+	{
+		gpio_set_value(149, 0);
+		gpio_set_value(150, 0);
+	}
+}
+
+EXPORT_SYMBOL(POWER_TRIGGER_DAQ);
+EXPORT_SYMBOL(benchmark_leds);
+
 
 static int gpio_blink_set(struct led_classdev *led_cdev,
 	unsigned long *delay_on, unsigned long *delay_off)

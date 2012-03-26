@@ -333,6 +333,27 @@ int get_write_access(struct inode * inode)
 	return 0;
 }
 
+#if UPROBE_PATCH
+int deny_write_access_to_inode(struct inode *inode)
+{
+	spin_lock(&inode->i_lock);
+	if (atomic_read(&inode->i_writecount) > 0) {
+		spin_unlock(&inode->i_lock);
+		return -ETXTBSY;
+	}
+	atomic_dec(&inode->i_writecount);
+	spin_unlock(&inode->i_lock);
+
+	return 0;
+}
+
+int deny_write_access(struct file * file)
+{
+	struct inode *inode = file->f_dentry->d_inode;
+
+	return deny_write_access_to_inode(inode);
+}
+#else
 int deny_write_access(struct file * file)
 {
 	struct inode *inode = file->f_path.dentry->d_inode;
@@ -347,7 +368,7 @@ int deny_write_access(struct file * file)
 
 	return 0;
 }
-
+#endif
 /**
  * path_get - get a reference to a path
  * @path: path to get the reference to

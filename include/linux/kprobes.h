@@ -37,6 +37,12 @@
 #include <linux/spinlock.h>
 #include <linux/rcupdate.h>
 #include <linux/mutex.h>
+#if UPROBE_PATCH
+#include <linux/mm.h>
+#include <linux/dcache.h>
+#include <linux/namei.h>
+#include <linux/pagemap.h>
+#endif
 
 #ifdef CONFIG_KPROBES
 #include <asm/kprobes.h>
@@ -46,6 +52,17 @@
 #define KPROBE_HIT_SS		0x00000002
 #define KPROBE_REENTER		0x00000004
 #define KPROBE_HIT_SSDONE	0x00000008
+
+#if UPROBE_PATCH
+/* uprobe_status settings */
+#define UPROBE_HIT_ACTIVE		0x00000001
+#define UPROBE_HIT_SS			0x00000002
+#define UPROBE_REENTER			0x00000004
+#define UPROBE_HIT_SSDONE		0x00000008
+#define UPROBE_SS_INLINE		0x0000000c
+#define UPROBE_SSDONE_INLINE	0x00000010
+#endif
+
 
 /* Attach to insert probes on any functions which should be ignored*/
 #define __kprobes	__attribute__((__section__(".kprobes.text")))
@@ -61,6 +78,9 @@ struct kprobe;
 struct pt_regs;
 struct kretprobe;
 struct kretprobe_instance;
+#if UPROBE_PATCH
+extern struct uprobe *current_uprobe;
+#endif
 typedef int (*kprobe_pre_handler_t) (struct kprobe *, struct pt_regs *);
 typedef int (*kprobe_break_handler_t) (struct kprobe *, struct pt_regs *);
 typedef void (*kprobe_post_handler_t) (struct kprobe *, struct pt_regs *,
@@ -117,6 +137,12 @@ struct kprobe {
 	 * Protected by kprobe_mutex after this kprobe is registered.
 	 */
 	u32 flags;
+	/* virtual address */
+	#ifdef UPROBE_PATCH
+	unsigned long vaddr;
+	/* record the probe pointer's function name */
+	char func_name[32];
+	#endif
 };
 
 /* Kprobe status flags */
@@ -163,6 +189,37 @@ struct jprobe {
 /* For backward compatibility with old code using JPROBE_ENTRY() */
 #define JPROBE_ENTRY(handler)	(handler)
 
+#if UPROBE_PATCH
+struct uprobe {
+    /* pointer to the pathname of the application */
+    char *pathname;
+    /* kprobe structure with user specified handlers */
+    struct kprobe kp;
+
+    /* hlist of all the userspace probes per application */
+    struct hlist_node ulist;
+    /* inode of the probed application */
+    struct inode *inode;
+    /* probe offset within the file */
+    unsigned long offset;
+};
+
+struct uprobe_module {
+    /* hlist head of all userspace probes per application */
+    struct hlist_head ulist_head;
+    /* list of all uprobe_module for probed application */
+    struct list_head mlist;
+    /* to hold path/dentry etc. */
+    struct nameidata nd;
+    /* original readpage operations */
+    struct address_space_operations *ori_a_ops;
+    /* readpage hooks added operations */
+    struct address_space_operations user_a_ops;
+    void *xol_area;
+    unsigned long vaddr;
+};
+#endif
+
 /*
  * Function-return probe -
  * Note:
@@ -182,6 +239,9 @@ struct kretprobe {
 	size_t data_size;
 	struct hlist_head free_instances;
 	spinlock_t lock;
+	#if UPROBE_PATCH
+	struct uprobe up;	
+	#endif
 };
 
 struct kretprobe_instance {
@@ -251,6 +311,9 @@ static inline int init_test_probes(void)
 }
 #endif /* CONFIG_KPROBES_SANITY_TEST */
 
+#if UPROBE_PATCH
+extern spinlock_t uprobe_lock;
+#endif
 extern int arch_prepare_kprobe(struct kprobe *p);
 extern void arch_arm_kprobe(struct kprobe *p);
 extern void arch_disarm_kprobe(struct kprobe *p);
@@ -259,6 +322,15 @@ extern void show_registers(struct pt_regs *regs);
 extern kprobe_opcode_t *get_insn_slot(void);
 extern void free_insn_slot(kprobe_opcode_t *slot, int dirty);
 extern void kprobes_inc_nmissed_count(struct kprobe *p);
+#if UPROBE_PATCH
+extern void copy_kprobe(struct kprobe *old_p, struct kprobe *p);
+extern int arch_copy_uprobe(struct kprobe *p, kprobe_opcode_t *address);
+extern void arch_arm_uprobe(kprobe_opcode_t *address);
+extern void arch_disarm_uprobe(struct kprobe *p, kprobe_opcode_t *address);
+extern void init_uprobes(void);
+struct kprobe *get_uprobe(void *addr);
+extern void *trampoline_handler(struct pt_regs *regs);
+#endif
 
 #ifdef CONFIG_OPTPROBES
 /*
@@ -316,6 +388,18 @@ static inline struct kprobe_ctlblk *get_kprobe_ctlblk(void)
 	return (&__get_cpu_var(kprobe_ctlblk));
 }
 
+#if UPROBE_PATCH
+static inline void set_uprobe_instance(struct kprobe *p)
+{
+	current_uprobe = container_of(p, struct uprobe, kp);
+}
+
+static inline void reset_uprobe_instance(void)
+{
+	current_uprobe = NULL;
+}
+#endif
+
 int register_kprobe(struct kprobe *p);
 void unregister_kprobe(struct kprobe *p);
 int register_kprobes(struct kprobe **kps, int num);
@@ -326,6 +410,12 @@ int register_jprobe(struct jprobe *p);
 void unregister_jprobe(struct jprobe *p);
 int register_jprobes(struct jprobe **jps, int num);
 void unregister_jprobes(struct jprobe **jps, int num);
+#if UPROBE_PATCH
+int register_uprobe(struct uprobe *uprobe);
+void unregister_uprobe(struct uprobe *uprobe);
+int register_uretprobe(struct kretprobe *rp);
+void unregister_uretprobe(struct kretprobe *rp);
+#endif
 void jprobe_return(void);
 unsigned long arch_deref_entry_point(void *);
 

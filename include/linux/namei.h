@@ -80,7 +80,9 @@ extern int follow_up(struct path *);
 
 extern struct dentry *lock_rename(struct dentry *, struct dentry *);
 extern void unlock_rename(struct dentry *, struct dentry *);
-
+#if UPROBE_PATCH
+extern int deny_write_access_to_inode(struct inode *inode);
+#endif
 static inline void nd_set_link(struct nameidata *nd, char *path)
 {
 	nd->saved_names[nd->depth] = path;

@@ -3546,7 +3546,7 @@ int access_process_vm(struct task_struct *tsk, unsigned long addr, void *buf, in
 
 	return buf - old_buf;
 }
-
+EXPORT_SYMBOL(access_process_vm);
 /*
  * Print the name of a VMA.
  */

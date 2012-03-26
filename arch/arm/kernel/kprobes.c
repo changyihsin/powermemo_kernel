@@ -27,6 +27,9 @@
 #include <linux/stringify.h>
 #include <asm/traps.h>
 #include <asm/cacheflush.h>
+#if UPROBE_PATCH
+#include <linux/mman.h>
+#endif
 
 #define MIN_STACK_SIZE(addr) 				\
 	min((unsigned long)MAX_STACK_SIZE,		\
@@ -304,7 +307,11 @@ void __naked __kprobes kretprobe_trampoline(void)
 }
 
 /* Called from kretprobe_trampoline */
+#if UPROBE_PATCH
+void *trampoline_handler(struct pt_regs *regs)
+#else
 static __used __kprobes void *trampoline_handler(struct pt_regs *regs)
+#endif
 {
 	struct kretprobe_instance *ri = NULL;
 	struct hlist_head *head, empty_rp;
@@ -329,6 +336,10 @@ static __used __kprobes void *trampoline_handler(struct pt_regs *regs)
 	 *       kretprobe_trampoline
 	 */
 	hlist_for_each_entry_safe(ri, node, tmp, head, hlist) {
+
+		if (ri == NULL)
+			continue;
+		
 		if (ri->task != current)
 			/* another task is sharing our hash bucket */
 			continue;
@@ -362,14 +373,64 @@ static __used __kprobes void *trampoline_handler(struct pt_regs *regs)
 
 	return (void *)orig_ret_address;
 }
+#if UPROBE_PATCH
+unsigned long __kprobes 
+alloc_user_trampoline( int size )
+{
+	unsigned long			addr;
+	
+	/* allocates a memory space in user space to store
+	 * trampoline codes */
+	down_write( &( current->mm->mmap_sem ) );
+	addr = do_mmap( NULL, 0, size, 
+			PROT_EXEC | PROT_READ | PROT_WRITE,
+			MAP_PRIVATE | MAP_ANONYMOUS, 0 );
+	up_write( &( current->mm->mmap_sem ) );
+	
+	if( addr == 0UL )
+		return 0;
+	return addr;
+}
+#endif
 
 void __kprobes arch_prepare_kretprobe(struct kretprobe_instance *ri,
 				      struct pt_regs *regs)
 {
 	ri->ret_addr = (kprobe_opcode_t *)regs->ARM_lr;
 
+	#if UPROBE_PATCH
+	if( __kernel_text_address( regs->ARM_lr ) )
+	{
+		/* the kretprobe is placed in kernel space */
+		regs->ARM_lr = (unsigned long)&kretprobe_trampoline;
+	}
+	else
+	{	
+		/* the kretprobe is placed in user space */
+		unsigned long	addr;
+		
+		/* it is impossible that the return address of 
+		 * a kernel thread ( task->mm == NULL ) is in 
+		 * user space */
+		BUG_ON(current->mm == NULL );
+
+		/* allocates a memory space in user space, 
+		 * and places a trampoline breakpoint (for 
+		 * kretprobe) in the space */
+		if (current->trampoline_addr == 0 ){
+			kprobe_opcode_t	insn = URETPROBE_BREAKPOINT_INSTRUCTION;
+			addr = alloc_user_trampoline( sizeof( insn ) );
+			current->trampoline_addr = addr;			
+			access_process_vm(current, current->trampoline_addr, &insn, sizeof( insn ), 1 );
+		}			
+		/* changes the return address of the target thread to 
+		 * the memory address of the trampoline */
+		regs->ARM_lr = current->trampoline_addr;
+	}
+	#else
 	/* Replace the return addr with trampoline addr. */
 	regs->ARM_lr = (unsigned long)&kretprobe_trampoline;
+	#endif
 }
 
 int __kprobes setjmp_pre_handler(struct kprobe *p, struct pt_regs *regs)

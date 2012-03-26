@@ -83,6 +83,14 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/sched.h>
 
+/* powermemo: When pmemo_client writes to the powermemo.ko's device file, this flag will be set/cleared */
+int powermemo_avail = 0;  /*  1: available  0: not available */
+EXPORT_SYMBOL(powermemo_avail);
+
+#include <linux/powermemo.h>
+powermemo_functions powermemofuncs;
+EXPORT_SYMBOL(powermemofuncs);
+
 /*
  * Convert user-nice values [ -20 ... 0 ... 19 ]
  * to static priority [ MAX_RT_PRIO..MAX_PRIO-1 ],
@@ -4123,6 +4131,15 @@ need_resched_nonpreemptible:
 	rq->skip_clock_update = 0;
 
 	if (likely(prev != next)) {
+
+		/* PowerMemo patch !! */
+		if (powermemo_avail == 1) {
+			powermemofuncs.process_slice_exit(current->pid);
+			/* printk(KERN_EMERG"%d have called process_slice_exit\n", current->pid); */
+			powermemofuncs.process_slice_entry(next->pid, next->comm);
+		}	
+
+
 		sched_info_switch(prev, next);
 		perf_event_task_sched_out(prev, next);
 

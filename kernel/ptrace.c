@@ -756,7 +756,10 @@ int generic_ptrace_pokedata(struct task_struct *tsk, unsigned long addr,
 	copied = access_process_vm(tsk, addr, &data, sizeof(data), 1);
 	return (copied == sizeof(data)) ? 0 : -EIO;
 }
-
+#if UPROBE_PATCH
+EXPORT_SYMBOL(generic_ptrace_peekdata);
+EXPORT_SYMBOL(generic_ptrace_pokedata);
+#endif
 #if defined CONFIG_COMPAT
 #include <linux/compat.h>
 

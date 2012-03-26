@@ -598,6 +598,10 @@ CHECKFLAGS     += $(NOSTDINC_FLAGS)
 # warn about C99 declaration after statement
 KBUILD_CFLAGS += $(call cc-option,-Wdeclaration-after-statement,)
 
+ifdef CONFIG_KPROBES
+KBUILD_CFLAGS += -DUPROBE_PATCH=1
+endif
+
 # disable pointer signed / unsigned warnings in gcc 4.0
 KBUILD_CFLAGS += $(call cc-option,-Wno-pointer-sign,)
 

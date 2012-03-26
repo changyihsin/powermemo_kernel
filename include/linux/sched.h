@@ -1511,6 +1511,10 @@ struct task_struct {
 		unsigned long memsw_bytes; /* uncharged mem+swap usage */
 	} memcg_batch;
 #endif
+	#ifdef UPROBE_PATCH
+	unsigned long trampoline_addr;
+	#endif
+
 };
 
 /* Future-safe accessor for struct task_struct's cpus_allowed. */

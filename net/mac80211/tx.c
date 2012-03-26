@@ -33,6 +33,11 @@
 #include "wme.h"
 #include "rate.h"
 
+
+/* PowerMemo Patch !! */
+int my_txbitrate = 0;
+EXPORT_SYMBOL(my_txbitrate);
+
 #define IEEE80211_TX_OK		0
 #define IEEE80211_TX_AGAIN	1
 #define IEEE80211_TX_PENDING	2
@@ -152,6 +157,14 @@ static __le16 ieee80211_duration(struct ieee80211_tx_data *tx, int group_addr,
 		 * PHY rate */
 		rate = mrate;
 	}
+
+
+	/* PowerMemo Patch !! */
+	if(rate > 0){
+		my_txbitrate = rate; /* The real rate = rate * 100K,so 540 means 54Mbit/s */
+		/*  printk("my_txbitrate = %d\n",my_txbitrate); */
+	}
+
 
 	/* Time needed to transmit ACK
 	 * (10 bytes + 4-byte FCS = 112 bits) plus SIFS; rounded up

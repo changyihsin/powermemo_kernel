@@ -82,6 +82,10 @@
 #include <linux/crypto.h>
 #include <linux/scatterlist.h>
 
+/* PowerMemo Patch !! */
+#include <linux/powermemo.h>
+extern int my_rxbitrate;
+
 int sysctl_tcp_tw_reuse __read_mostly;
 int sysctl_tcp_low_latency __read_mostly;
 EXPORT_SYMBOL(sysctl_tcp_low_latency);
@@ -1663,6 +1667,16 @@ int tcp_v4_rcv(struct sk_buff *skb)
 	sk = __inet_lookup_skb(&tcp_hashinfo, skb, th->source, th->dest);
 	if (!sk)
 		goto no_tcp_socket;
+
+	/* PowerMemo Patch !! */
+	if(powermemo_avail == 1 && 
+			skb != NULL && 
+			skb->dev->name[0] == 'w'){ /*  name ?= wlanX */
+
+		powermemofuncs.rcv_entry(sk->pid, my_rxbitrate, skb->len); 
+		/* printk("tcp_v4_rcv: pid = %d, len = %d\n",sk->pid, skb->len); */
+	}
+
 
 process:
 	if (sk->sk_state == TCP_TIME_WAIT)
